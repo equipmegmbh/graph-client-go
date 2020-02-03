@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option go_package = "transport";
+
+// @formatter:off
+// protoc --proto_path=proto --gogofast_out=plugins=grpc:pkg\transport api.proto
+
+package core;
+
+// Interface exported by the intelligence server.
+service Api {
+    //
+    rpc Subscribe(Subscription) returns (stream Event);
+    //
+    rpc Select(Request) returns (stream Response);
+    //
+    rpc Query(Request) returns (stream Response);
+    //
+    rpc Create(Request) returns (Response);
+    //
+    rpc Update(Request) returns (Response);
+    //
+    rpc Delete(Request) returns (Response);
+}
+
+message Subscription {
+    string set = 1;
+    string type = 2;
+}
+
+message Event {
+    enum Kind { NOTIFY = 0; INSERT = 1; UPDATE = 2; DELETE = 3; }
+
+    Kind kind = 1;
+    Response response = 2;
+}
+
+message Request {
+    string set = 1;
+    string type = 2;
+
+    bytes data = 5;
+}
+
+message Response {
+    bytes data = 1;
+}
