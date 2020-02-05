@@ -14,6 +14,11 @@ import (
 )
 
 type Client interface {
+	Select(set, t string, request interface{}, out interface{}) error
+	Query(set, t, query string, out interface{}) error
+	Create(set, t string, data interface{}, out interface{}) error
+	Update(set, t string, data interface{}, out interface{}) error
+	Delete(set, t string, data interface{}, out interface{}) error
 }
 
 func Connect(ctx context.Context, url string, ssl bool) (Client, error) {
