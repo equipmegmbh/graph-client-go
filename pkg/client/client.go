@@ -61,7 +61,7 @@ func (dc *defaultClient) Select(set, t string, request interface{}, out interfac
 	result = append(result, 0x5D)
 
 end:
-	return json.Unmarshal(result, &out)
+	return json.Unmarshal(result, out)
 }
 
 func (dc *defaultClient) Query(set, t, query string, out interface{}) error {
@@ -106,7 +106,7 @@ func (dc *defaultClient) Query(set, t, query string, out interface{}) error {
 	result = append(result, 0x5D)
 
 end:
-	return json.Unmarshal(result, &out)
+	return json.Unmarshal(result, out)
 }
 
 func (dc *defaultClient) Create(set, t string, data interface{}, out interface{}) error {
@@ -129,7 +129,7 @@ func (dc *defaultClient) Create(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	return json.Unmarshal(response.Data, &out)
+	return json.Unmarshal(response.Data, out)
 }
 
 func (dc *defaultClient) Update(set, t string, data interface{}, out interface{}) error {
@@ -152,7 +152,7 @@ func (dc *defaultClient) Update(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	return json.Unmarshal(response.Data, &out)
+	return json.Unmarshal(response.Data, out)
 }
 
 func (dc *defaultClient) Delete(set, t string, data interface{}, out interface{}) error {
@@ -175,5 +175,5 @@ func (dc *defaultClient) Delete(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	return json.Unmarshal(response.Data, &out)
+	return json.Unmarshal(response.Data, out)
 }
