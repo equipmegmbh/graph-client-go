@@ -1,4 +1,4 @@
-package client
+package intelligence
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/verticalgmbh/intelligence-go/pkg/transport"
+	"github.com/verticalgmbh/intelligence-go/transport"
 )
 
 type Client interface {

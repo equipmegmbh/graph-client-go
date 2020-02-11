@@ -1,4 +1,4 @@
-package client
+package intelligence
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/verticalgmbh/intelligence-go/pkg/transport"
+	"github.com/verticalgmbh/intelligence-go/transport"
 )
 
 type defaultClient struct {
