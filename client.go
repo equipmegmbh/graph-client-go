@@ -13,6 +13,47 @@ type defaultClient struct {
 	cli transport.ApiClient
 }
 
+func (dc *defaultClient) Subscribe(set, t string, out chan *Event) error {
+
+	ctx := context.Background()
+	stream, err := dc.cli.Subscribe(ctx, &transport.Subscription{Set: set, Type: t})
+
+	defer close(out)
+
+	if f := "%v"; err != nil {
+		return fmt.Errorf(f, err)
+	}
+
+	for {
+		event, err := stream.Recv()
+
+		if err == io.EOF {
+			return nil
+		}
+
+		if f := "subscribe failed: %v"; err != nil {
+			return fmt.Errorf(f, err)
+		}
+
+		message := new(Event)
+
+		switch event.Kind {
+		case transport.Event_NOTIFY:
+			message.Action = "notify"
+		case transport.Event_INSERT:
+			message.Action = "insert"
+		case transport.Event_UPDATE:
+			message.Action = "update"
+		case transport.Event_DELETE:
+			message.Action = "delete"
+		}
+
+		message.Data = event.Response.Data
+		out <- message
+	}
+
+}
+
 func (dc *defaultClient) Select(set, t string, request interface{}, out interface{}) error {
 	d, err := json.Marshal(request)
 
