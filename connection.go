@@ -10,14 +10,31 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/verticalgmbh/intelligence-core/pkg/pb"
+	"github.com/verticalgmbh/intelligence-go/transport"
 )
 
-func Connect(ctx context.Context, url string, ssl bool) (*Client, error) {
+type Client interface {
+	Subscribe(set, t string, out chan *Event) error
+	Select(set, t string, request interface{}, out interface{}) error
+	Query(set, t, query string, out interface{}) error
+	Create(set, t string, data interface{}, out interface{}) error
+	Update(set, t string, data interface{}, out interface{}) error
+	Delete(set, t string, data interface{}, out interface{}) error
+}
+
+type Event struct {
+	Set    string
+	Type   string
+	Action string
+	Data   []byte
+}
+
+func Connect(ctx context.Context, url string, ssl bool) (Client, error) {
 	return connect(ctx, url, !ssl)
 }
 
-func connect(ctx context.Context, url string, insecure bool) (*Client, error) {
+func connect(ctx context.Context, url string, insecure bool) (Client, error) {
+	client := new(defaultClient)
 	opts := make([]grpc.DialOption, 0)
 
 	cred := credentials.NewTLS(&tls.Config{})
@@ -41,7 +58,9 @@ func connect(ctx context.Context, url string, insecure bool) (*Client, error) {
 
 	go watch(ctx, conn)
 
-	return &Client{cli: pb.NewApiClient(conn)}, nil
+	client.cli = transport.NewApiClient(conn)
+
+	return client, nil
 }
 
 func watch(ctx context.Context, conn *grpc.ClientConn) {
