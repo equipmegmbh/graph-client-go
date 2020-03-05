@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/verticalgmbh/intelligence-go/transport"
+	"github.com/verticalgmbh/intelligence-go/pb"
 )
 
 type defaultClient struct {
-	cli transport.ApiClient
+	cli pb.ApiClient
 }
 
 func (dc *defaultClient) Subscribe(set, t string, out chan *Event) error {
 
 	ctx := context.Background()
-	stream, err := dc.cli.Subscribe(ctx, &transport.Subscription{Set: set, Type: t})
+	stream, err := dc.cli.Subscribe(ctx, &pb.Subscription{Set: set, Type: t})
 
 	defer close(out)
 
@@ -38,13 +38,13 @@ func (dc *defaultClient) Subscribe(set, t string, out chan *Event) error {
 		message := new(Event)
 
 		switch event.Kind {
-		case transport.Event_NOTIFY:
+		case pb.Event_NOTIFY:
 			message.Action = "notify"
-		case transport.Event_INSERT:
+		case pb.Event_INSERT:
 			message.Action = "insert"
-		case transport.Event_UPDATE:
+		case pb.Event_UPDATE:
 			message.Action = "update"
-		case transport.Event_DELETE:
+		case pb.Event_DELETE:
 			message.Action = "delete"
 		}
 
@@ -62,7 +62,7 @@ func (dc *defaultClient) Select(set, t string, request interface{}, out interfac
 	}
 
 	ctx := context.Background()
-	stream, err := dc.cli.Select(ctx, &transport.Request{Set: set, Type: t, Data: d})
+	stream, err := dc.cli.Select(ctx, &pb.Request{Set: set, Type: t, Data: d})
 
 	if f := "%v"; err != nil {
 		return fmt.Errorf(f, err)
@@ -107,7 +107,7 @@ end:
 
 func (dc *defaultClient) Query(set, t, query string, out interface{}) error {
 	ctx := context.Background()
-	stream, err := dc.cli.Query(ctx, &transport.Request{Set: set, Type: t, Data: []byte(query)})
+	stream, err := dc.cli.Query(ctx, &pb.Request{Set: set, Type: t, Data: []byte(query)})
 
 	if f := "%v"; err != nil {
 		return fmt.Errorf(f, err)
@@ -157,7 +157,7 @@ func (dc *defaultClient) Create(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	request := &transport.Request{
+	request := &pb.Request{
 		Set:  set,
 		Type: t,
 		Data: d,
@@ -180,7 +180,7 @@ func (dc *defaultClient) Update(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	request := &transport.Request{
+	request := &pb.Request{
 		Set:  set,
 		Type: t,
 		Data: d,
@@ -203,7 +203,7 @@ func (dc *defaultClient) Delete(set, t string, data interface{}, out interface{}
 		return fmt.Errorf(f, err)
 	}
 
-	request := &transport.Request{
+	request := &pb.Request{
 		Set:  set,
 		Type: t,
 		Data: d,

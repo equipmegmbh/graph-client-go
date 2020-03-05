@@ -1,15 +1,15 @@
 # IntelliJ
-.idea/
+/.idea/
 
 /*.ipr
 /*.iws
 /**/*.iml
 
 # Visual Studio
-.vs/
+/.vs/
 
 # Visual Studio Code
-.vscode/
+/.vscode/
 
 # Binaries for programs and plugins
 *.exe
@@ -24,5 +24,8 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Temporary tests
+/test/
+
 # Dependency directories (remove the comment below to include it)
-vendor/
+/vendor/

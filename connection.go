@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/verticalgmbh/intelligence-go/transport"
+	"github.com/verticalgmbh/intelligence-go/pb"
 )
 
 type Client interface {
@@ -58,7 +58,7 @@ func connect(ctx context.Context, url string, insecure bool) (Client, error) {
 
 	go watch(ctx, conn)
 
-	client.cli = transport.NewApiClient(conn)
+	client.cli = pb.NewApiClient(conn)
 
 	return client, nil
 }
