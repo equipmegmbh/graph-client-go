@@ -14,12 +14,12 @@ import (
 )
 
 type Client interface {
-	Subscribe(set, t string, out chan *Event) error
-	Select(set, t string, request interface{}, out interface{}) error
-	Query(set, t, query string, out interface{}) error
-	Create(set, t string, data interface{}, out interface{}) error
-	Update(set, t string, data interface{}, out interface{}) error
-	Delete(set, t string, data interface{}, out interface{}) error
+	Subscribe(ctx context.Context, set, t string, out chan *Event) error
+	Select(ctx context.Context, set, t string, request interface{}, out interface{}) error
+	Query(ctx context.Context, set, t, query string, out interface{}) error
+	Create(ctx context.Context, set, t string, data interface{}, out interface{}) error
+	Update(ctx context.Context, set, t string, data interface{}, out interface{}) error
+	Delete(ctx context.Context, set, t string, data interface{}, out interface{}) error
 }
 
 type Event struct {
