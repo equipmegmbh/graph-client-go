@@ -24,8 +24,12 @@ type Person struct {
 }
 
 func TestSubscribe(t *testing.T) {
+	options := new(Options)
+
+	options.Secure = false
+
 	ctx, cancel := context.WithCancel(context.Background())
-	cli, err := Connect(ctx, "passthrough:///127.0.0.1:8230", false)
+	cli, err := Connect(ctx, "passthrough:///127.0.0.1:8230", options)
 
 	defer cancel()
 

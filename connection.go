@@ -13,6 +13,8 @@ import (
 	"github.com/verticalgmbh/intelligence-go/pb"
 )
 
+type ConnectionHandler func()
+
 type Client interface {
 	Subscribe(ctx context.Context, set, t string, out chan *Event) error
 	Select(ctx context.Context, set, t string, request interface{}, out interface{}) error
@@ -22,6 +24,13 @@ type Client interface {
 	Delete(ctx context.Context, set, t string, data interface{}, out interface{}) error
 }
 
+type Options struct {
+	Secure bool
+
+	ReconnectHandler  ConnectionHandler
+	DisconnectHandler ConnectionHandler
+}
+
 type Event struct {
 	Set    string
 	Type   string
@@ -29,18 +38,18 @@ type Event struct {
 	Data   []byte
 }
 
-func Connect(ctx context.Context, url string, ssl bool) (Client, error) {
-	return connect(ctx, url, !ssl)
+func Connect(ctx context.Context, url string, options *Options) (Client, error) {
+	return connect(ctx, url, options)
 }
 
-func connect(ctx context.Context, url string, insecure bool) (Client, error) {
+func connect(ctx context.Context, url string, options *Options) (Client, error) {
 	client := new(defaultClient)
 	opts := make([]grpc.DialOption, 0)
 
 	cred := credentials.NewTLS(&tls.Config{})
 	tcl := grpc.WithTransportCredentials(cred)
 
-	if opt := grpc.WithInsecure(); insecure {
+	if opt := grpc.WithInsecure(); !options.Secure {
 		tcl = opt
 	}
 
@@ -56,14 +65,22 @@ func connect(ctx context.Context, url string, insecure bool) (Client, error) {
 	glog.Info("intelligence client connected")
 	glog.Info("start watching intelligence connection")
 
-	go watch(ctx, conn)
+	go watch(ctx, conn, options)
 
 	client.cli = pb.NewApiClient(conn)
 
 	return client, nil
 }
 
-func watch(ctx context.Context, conn *grpc.ClientConn) {
+func watch(ctx context.Context, conn *grpc.ClientConn, options *Options) {
+	if handler := func() {}; options.ReconnectHandler == nil {
+		options.ReconnectHandler = handler
+	}
+
+	if handler := func() {}; options.DisconnectHandler == nil {
+		options.DisconnectHandler = handler
+	}
+
 	//noinspection GoUnhandledErrorResult
 	defer conn.Close()
 
@@ -75,8 +92,11 @@ func watch(ctx context.Context, conn *grpc.ClientConn) {
 		chg = st == connectivity.Ready
 		st = conn.GetState()
 
-		if f := "intelligence connection lost"; chg {
-			glog.Info(f)
+		if chg {
+			glog.Info("intelligence connection lost")
+			glog.Info("reconnecting...")
+
+			options.DisconnectHandler()
 		}
 
 		switch st {
@@ -93,5 +113,16 @@ func watch(ctx context.Context, conn *grpc.ClientConn) {
 
 	reconnected:
 		glog.Info("intelligence client reconnected")
+		glog.Info("call reconnect handler")
+
+		options.ReconnectHandler()
 	}
+}
+
+func reconnected() {
+	// default handler, do nothing
+}
+
+func disconnected() {
+	// default handler, do nothing
 }
