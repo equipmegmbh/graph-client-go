@@ -1,1 +1,1 @@
-# intelligence-go
+# graph-client-go

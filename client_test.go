@@ -1,4 +1,4 @@
-package intelligence
+package graph
 
 import (
 	"context"
@@ -25,10 +25,9 @@ type Person struct {
 
 func TestSubscribe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cli, err := Connect(ctx, "passthrough:///127.0.0.1:8230", false)
-
 	defer cancel()
 
+	cli, err := NewClient(ctx, "passthrough:///127.0.0.1:8230", false, "")
 	require.NoError(t, err)
 	require.NotNil(t, cli)
 
@@ -61,13 +60,13 @@ func TestSubscribe(t *testing.T) {
 		entity, open := <-entities
 
 		require.True(t, open)
-		require.NoError(t, cli.Update(ctx, set, kind, entity, reply))
+		require.NoError(t, cli.Update(ctx, kind, entity, reply))
 	}()
 
 	glog.Infof("subscribe to events")
 
 	go func() {
-		require.NoError(t, cli.Subscribe(ctx, set, kind, events))
+		require.NoError(t, cli.Subscribe(ctx, kind, events))
 	}()
 
 	glog.Infof("update an entity")

@@ -1,25 +1,75 @@
-package intelligence
+package graph
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
 	"io"
 
 	"github.com/equipmegmbh/graph-client-go/pb"
 )
 
-type defaultClient struct {
-	cli pb.ApiClient
+type Client interface {
+	Subscribe(ctx context.Context, nodeType string, out chan *Event) error
+	SubscribeInSet(ctx context.Context, set, nodeType string, out chan *Event) error
+
+	Query(ctx context.Context, nodeType, query string, out interface{}) error
+	QueryFromSet(ctx context.Context, set, nodeType, query string, out interface{}) error
+
+	Create(ctx context.Context, nodeType string, data interface{}, out interface{}) error
+	CreateInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error
+
+	Update(ctx context.Context, nodeType string, data interface{}, out interface{}) error
+	UpdateInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error
+
+	Delete(ctx context.Context, nodeType string, data interface{}, out interface{}) error
+	DeleteInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error
 }
 
-func (dc *defaultClient) Subscribe(ctx context.Context, set, t string, out chan *Event) error {
-	stream, err := dc.cli.Subscribe(ctx, &pb.Subscription{Set: set, Type: t})
+type Event struct {
+	Set    string
+	Type   string
+	Action string
+	Data   []byte
+}
+
+func NewClient(ctx context.Context, url string, ssl bool, defaultSet string) (Client, error) {
+	client := new(defaultClient)
+	client.defaultSet = defaultSet
+
+	conn, err := connect(ctx, url, ssl)
+	if err != nil {
+		return nil, err
+	}
+
+	client.cli = pb.NewApiClient(conn)
+
+	// Start monitoring the connection
+	glog.Info("Start watching graph connection")
+	go watch(ctx, conn)
+
+	return client, nil
+}
+
+type defaultClient struct {
+	Client // defaultClient implements the Client interface
+
+	cli        pb.ApiClient
+	defaultSet string
+}
+
+func (dc *defaultClient) Subscribe(ctx context.Context, nodeType string, out chan *Event) error {
+	return dc.SubscribeInSet(ctx, dc.defaultSet, nodeType, out)
+}
+
+func (dc *defaultClient) SubscribeInSet(ctx context.Context, set, nodeType string, out chan *Event) error {
+	stream, err := dc.cli.Subscribe(ctx, &pb.Subscription{Set: set, Type: nodeType})
 
 	defer close(out)
 
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+	if err != nil {
+		return err
 	}
 
 	for {
@@ -29,8 +79,8 @@ func (dc *defaultClient) Subscribe(ctx context.Context, set, t string, out chan 
 			return nil
 		}
 
-		if f := "subscribe failed: %v"; err != nil {
-			return fmt.Errorf(f, err)
+		if err != nil {
+			return fmt.Errorf("subscribe failed: %w", err)
 		}
 
 		message := new(Event)
@@ -55,61 +105,14 @@ func (dc *defaultClient) Subscribe(ctx context.Context, set, t string, out chan 
 	}
 }
 
-func (dc *defaultClient) Select(ctx context.Context, set, t string, request interface{}, out interface{}) error {
-	d, err := json.Marshal(request)
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
-	}
-
-	stream, err := dc.cli.Select(ctx, &pb.Request{Set: set, Type: t, Data: d})
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
-	}
-
-	result, buf := make([]byte, 0), make([]byte, 0)
-	response := make([][]byte, 0)
-
-	for {
-		reply, err := stream.Recv()
-
-		if err == io.EOF {
-			break
-		}
-
-		if f := "select failed: %v"; err != nil {
-			return fmt.Errorf(f, err)
-		}
-
-		response = append(response, reply.Data)
-	}
-
-	if lb, rb := byte(0x5B), byte(0x5D); len(response) < 1 {
-		result = append(result, lb)
-		result = append(result, rb)
-
-		goto end
-	}
-
-	for i, sep := 0, byte(0x2C); i < len(response); i++ {
-		buf = append(buf, response[i]...)
-		buf = append(buf, sep)
-	}
-
-	result = append(result, 0x5B)
-	result = append(result, buf[:len(buf)-1]...)
-	result = append(result, 0x5D)
-
-end:
-	return json.Unmarshal(result, out)
+func (dc *defaultClient) Query(ctx context.Context, t, query string, out interface{}) error {
+	return dc.QueryFromSet(ctx, dc.defaultSet, t, query, out)
 }
 
-func (dc *defaultClient) Query(ctx context.Context, set, t, query string, out interface{}) error {
+func (dc *defaultClient) QueryFromSet(ctx context.Context, set, t, query string, out interface{}) error {
 	stream, err := dc.cli.Query(ctx, &pb.Request{Set: set, Type: t, Data: []byte(query)})
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+	if err != nil {
+		return err
 	}
 
 	result, buf := make([]byte, 0), make([]byte, 0)
@@ -122,16 +125,16 @@ func (dc *defaultClient) Query(ctx context.Context, set, t, query string, out in
 			break
 		}
 
-		if f := "query failed: %v"; err != nil {
-			return fmt.Errorf(f, err)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
 		}
 
 		response = append(response, reply.Data)
 	}
 
-	if lb, rb := byte(0x5B), byte(0x5D); len(response) < 1 {
-		result = append(result, lb)
-		result = append(result, rb)
+	if len(response) < 1 {
+		result = append(result, 0x5B)
+		result = append(result, 0x5D)
 
 		goto end
 	}
@@ -149,67 +152,73 @@ end:
 	return json.Unmarshal(result, out)
 }
 
-func (dc *defaultClient) Create(ctx context.Context, set, t string, data interface{}, out interface{}) error {
-	d, err := json.Marshal(data)
+func (dc *defaultClient) Create(ctx context.Context, nodeType string, data interface{}, out interface{}) error {
+	return dc.CreateInSet(ctx, dc.defaultSet, nodeType, data, out)
+}
 
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+func (dc *defaultClient) CreateInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error {
+	d, err := json.Marshal(data)
+	if err != nil {
+		return err
 	}
 
 	request := &pb.Request{
 		Set:  set,
-		Type: t,
+		Type: nodeType,
 		Data: d,
 	}
 
 	response, err := dc.cli.Create(ctx, request)
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+	if err != nil {
+		return err
 	}
 
 	return json.Unmarshal(response.Data, out)
 }
 
-func (dc *defaultClient) Update(ctx context.Context, set, t string, data interface{}, out interface{}) error {
-	d, err := json.Marshal(data)
+func (dc *defaultClient) Update(ctx context.Context, nodeType string, data interface{}, out interface{}) error {
+	return dc.UpdateInSet(ctx, dc.defaultSet, nodeType, data, out)
+}
 
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+func (dc *defaultClient) UpdateInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error {
+	d, err := json.Marshal(data)
+	if err != nil {
+		return err
 	}
 
 	request := &pb.Request{
 		Set:  set,
-		Type: t,
+		Type: nodeType,
 		Data: d,
 	}
 
 	response, err := dc.cli.Update(ctx, request)
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+	if err != nil {
+		return err
 	}
 
 	return json.Unmarshal(response.Data, out)
 }
 
-func (dc *defaultClient) Delete(ctx context.Context, set, t string, data interface{}, out interface{}) error {
-	d, err := json.Marshal(data)
+func (dc *defaultClient) Delete(ctx context.Context, nodeType string, data interface{}, out interface{}) error {
+	return dc.DeleteInSet(ctx, dc.defaultSet, nodeType, data, out)
+}
 
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+func (dc *defaultClient) DeleteInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error {
+	d, err := json.Marshal(data)
+	if err != nil {
+		return err
 	}
 
 	request := &pb.Request{
 		Set:  set,
-		Type: t,
+		Type: nodeType,
 		Data: d,
 	}
 
 	response, err := dc.cli.Delete(ctx, request)
-
-	if f := "%v"; err != nil {
-		return fmt.Errorf(f, err)
+	if err != nil {
+		return err
 	}
 
 	return json.Unmarshal(response.Data, out)

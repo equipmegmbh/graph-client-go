@@ -3,7 +3,7 @@ syntax = "proto3";
 option go_package = "./pb";
 
 // @formatter:off
-// protoc --proto_path=proto --go_out=. proto/api.proto
+// protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/api.proto
 
 package core;
 
