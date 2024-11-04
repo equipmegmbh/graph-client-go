@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-option go_package = "pb";
+option go_package = "./pb";
 
 // @formatter:off
-// protoc --proto_path=proto --gogofast_out=plugins=grpc:pb api.proto
+// protoc --proto_path=proto --go_out=. proto/api.proto
 
 package core;
 
-// Interface exported by the intelligence server.
+// Interface exported by the graph server.
 service Api {
   //
   rpc Subscribe(Subscription) returns (stream Event);
