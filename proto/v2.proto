@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+option go_package = "./pb/v2";
+
+// @formatter:off
+// protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/v2.proto
+
+package graph;
+
+// Interface exported by the api server.
+service Data {
+  rpc Subscribe (Subscription) returns (stream Event);
+  rpc Alter (Schema) returns (Schema);
+  rpc Query (Request) returns (Response);
+  rpc Commit (Ttx) returns (Empty);
+  rpc Discard (Ttx) returns (Empty);
+}
+
+// Subscription ...
+message Subscription {
+  string ns = 1;
+  string type = 2;
+}
+
+// Schema ...
+message Schema {
+  string ns = 1;
+}
+
+// Request ...
+message Request {
+  string ns = 1;
+  string ttx = 2;
+
+  string query = 5;
+
+  repeated Mutation mutations = 8;
+}
+
+// Txn is the transaction context.
+message Ttx {
+  string ns = 1;
+  string id = 2;
+}
+
+// Mutation ...
+message Mutation {
+  bytes set = 8;
+  bytes del = 9;
+}
+
+// Event ...
+message Event {
+  enum Kind { UNKNOWN = 0; INSERT = 1; UPDATE = 2; DELETE = 3; }
+
+  Kind kind = 1;
+  Response response = 2;
+}
+
+// Response ...
+message Response {
+  string ns = 1;
+  string ttx = 2;
+
+  bytes payload = 5;
+}
+
+// Empty ...
+message Empty {
+}

@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	v2 "github.com/equipmegmbh/graph-client-go/pb/v2"
 	"github.com/golang/glog"
 	"io"
 
-	"github.com/equipmegmbh/graph-client-go/pb"
+	"github.com/equipmegmbh/graph-client-go/pb/v1"
 )
 
 type Client interface {
@@ -25,6 +26,10 @@ type Client interface {
 
 	Delete(ctx context.Context, nodeType string, data interface{}, out interface{}) error
 	DeleteInSet(ctx context.Context, set, nodeType string, data interface{}, out interface{}) error
+
+	Execute(ctx context.Context, transactionIn, query string, setMutations, delMutations []interface{}, commit bool) (result []byte, transactionOut string, err error)
+	CommitTransaction(ctx context.Context, transaction string) error
+	DiscardTransaction(ctx context.Context, transaction string) error
 }
 
 type Event struct {
@@ -32,6 +37,11 @@ type Event struct {
 	Type   string
 	Action string
 	Data   []byte
+}
+
+type QueryResponse struct {
+	Transaction string
+	Data        []byte
 }
 
 func NewClient(ctx context.Context, url string, ssl bool, defaultSet string) (Client, error) {
@@ -43,7 +53,8 @@ func NewClient(ctx context.Context, url string, ssl bool, defaultSet string) (Cl
 		return nil, err
 	}
 
-	client.cli = pb.NewApiClient(conn)
+	client.v1 = v1.NewApiClient(conn)
+	client.v2 = v2.NewDataClient(conn)
 
 	// Start monitoring the connection
 	glog.Info("Start watching graph connection")
@@ -55,7 +66,8 @@ func NewClient(ctx context.Context, url string, ssl bool, defaultSet string) (Cl
 type defaultClient struct {
 	Client // defaultClient implements the Client interface
 
-	cli        pb.ApiClient
+	v1         v1.ApiClient
+	v2         v2.DataClient
 	defaultSet string
 }
 
@@ -64,7 +76,7 @@ func (dc *defaultClient) Subscribe(ctx context.Context, nodeType string, out cha
 }
 
 func (dc *defaultClient) SubscribeInSet(ctx context.Context, set, nodeType string, out chan *Event) error {
-	stream, err := dc.cli.Subscribe(ctx, &pb.Subscription{Set: set, Type: nodeType})
+	stream, err := dc.v1.Subscribe(ctx, &v1.Subscription{Set: set, Type: nodeType})
 
 	defer close(out)
 
@@ -89,13 +101,13 @@ func (dc *defaultClient) SubscribeInSet(ctx context.Context, set, nodeType strin
 		message.Data = event.Response.Data
 
 		switch event.Kind {
-		case pb.Event_NOTIFY:
+		case v1.Event_NOTIFY:
 			message.Action = "notify"
-		case pb.Event_INSERT:
+		case v1.Event_INSERT:
 			message.Action = "insert"
-		case pb.Event_UPDATE:
+		case v1.Event_UPDATE:
 			message.Action = "update"
-		case pb.Event_DELETE:
+		case v1.Event_DELETE:
 			message.Action = "delete"
 		default:
 			return fmt.Errorf("unknown event type received")
@@ -105,12 +117,14 @@ func (dc *defaultClient) SubscribeInSet(ctx context.Context, set, nodeType strin
 	}
 }
 
+// #region v1
+
 func (dc *defaultClient) Query(ctx context.Context, t, query string, out interface{}) error {
 	return dc.QueryFromSet(ctx, dc.defaultSet, t, query, out)
 }
 
 func (dc *defaultClient) QueryFromSet(ctx context.Context, set, t, query string, out interface{}) error {
-	stream, err := dc.cli.Query(ctx, &pb.Request{Set: set, Type: t, Data: []byte(query)})
+	stream, err := dc.v1.Query(ctx, &v1.Request{Set: set, Type: t, Data: []byte(query)})
 	if err != nil {
 		return err
 	}
@@ -162,13 +176,13 @@ func (dc *defaultClient) CreateInSet(ctx context.Context, set, nodeType string, 
 		return err
 	}
 
-	request := &pb.Request{
+	request := &v1.Request{
 		Set:  set,
 		Type: nodeType,
 		Data: d,
 	}
 
-	response, err := dc.cli.Create(ctx, request)
+	response, err := dc.v1.Create(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -186,13 +200,13 @@ func (dc *defaultClient) UpdateInSet(ctx context.Context, set, nodeType string, 
 		return err
 	}
 
-	request := &pb.Request{
+	request := &v1.Request{
 		Set:  set,
 		Type: nodeType,
 		Data: d,
 	}
 
-	response, err := dc.cli.Update(ctx, request)
+	response, err := dc.v1.Update(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -210,16 +224,77 @@ func (dc *defaultClient) DeleteInSet(ctx context.Context, set, nodeType string, 
 		return err
 	}
 
-	request := &pb.Request{
+	request := &v1.Request{
 		Set:  set,
 		Type: nodeType,
 		Data: d,
 	}
 
-	response, err := dc.cli.Delete(ctx, request)
+	response, err := dc.v1.Delete(ctx, request)
 	if err != nil {
 		return err
 	}
 
 	return json.Unmarshal(response.Data, out)
 }
+
+// #endregion
+
+// #region v2
+
+// Execute a query and/or mutations in a transaction. Set commit to true to commit the transaction with this execution. Otherwise, the transaction will remain open
+func (dc *defaultClient) Execute(ctx context.Context, transactionIn, query string, setMutations, delMutations []interface{}, commit bool) (result []byte, transactionOut string, err error) {
+	request := &v2.Request{
+		Ns:    dc.defaultSet,
+		Ttx:   transactionIn,
+		Query: query,
+	}
+
+	for _, s := range setMutations {
+		data, err := json.Marshal(s)
+		if err != nil {
+			return nil, "", err
+		}
+		request.Mutations = append(request.Mutations, &v2.Mutation{Set: data})
+	}
+
+	for _, d := range delMutations {
+		data, err := json.Marshal(d)
+		if err != nil {
+			return nil, "", err
+		}
+		request.Mutations = append(request.Mutations, &v2.Mutation{Del: data})
+	}
+
+	var response *v2.Response
+	response, err = dc.v2.Query(ctx, request)
+	if err != nil {
+		return
+	}
+
+	if commit {
+		if _, err = dc.v2.Commit(ctx, &v2.Ttx{Ns: dc.defaultSet, Id: response.Ttx}); err != nil {
+			return
+		}
+	}
+
+	return response.Payload, response.Ttx, nil
+}
+
+func (dc *defaultClient) CommitTransaction(ctx context.Context, transaction string) error {
+	_, err := dc.v2.Commit(ctx, &v2.Ttx{
+		Ns: dc.defaultSet,
+		Id: transaction,
+	})
+	return err
+}
+
+func (dc *defaultClient) DiscardTransaction(ctx context.Context, transaction string) error {
+	_, err := dc.v2.Discard(ctx, &v2.Ttx{
+		Ns: dc.defaultSet,
+		Id: transaction,
+	})
+	return err
+}
+
+// #endregion

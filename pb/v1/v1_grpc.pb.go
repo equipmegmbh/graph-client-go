@@ -2,12 +2,12 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v4.25.2
-// source: api.proto
+// source: v1.proto
 
 // @formatter:off
-// protoc --proto_path=proto --go_out=. proto/api.proto
+// protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/v1.proto
 
-package pb
+package v1
 
 import (
 	context "context"
@@ -324,5 +324,5 @@ var Api_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "api.proto",
+	Metadata: "v1.proto",
 }
